@@ -1,6 +1,6 @@
 
 # Howitzer detection/decoy recognition (YOLOv8)
-![](ex1.jpg)
+![](first_ex.jpg)
 
 ## Idea
 
