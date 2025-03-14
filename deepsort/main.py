@@ -7,9 +7,10 @@ import torch
 
 
 class DeepDetector:
-    def __init__(self, path, device, model_path, yolo_model_path):
+    def __init__(self, path, device, threshold, model_path, yolo_model_path):
         self.path = path
         self.device = device
+        self.threshold = threshold
 
         self.model = self.load_model(model_path)
         self.yolo_model = self.load_model(yolo_model_path)
@@ -18,7 +19,7 @@ class DeepDetector:
         self.yolo_names = self.yolo_model.names
 
 
-        self.tracker = DeepSort(max_iou_distance = 0.7, max_age = 100, n_init = 2)
+        self.tracker = DeepSort(max_iou_distance = 0.7, max_age = 100, n_init = 5)
 
     def load_model(self, model_path):
         model = YOLO(model_path)
@@ -26,11 +27,6 @@ class DeepDetector:
         model.fuse()
         return model
 
-    # def load_yolo_model(self):
-    #     model = YOLO("yolo11l.pt")
-    #     model.to(self.device)
-    #     model.fuse()
-    #     return model
 
     def results(self, model, frame):
         return model(frame)[0]
@@ -40,7 +36,7 @@ class DeepDetector:
             res_array = []
             for result in results.boxes.data.tolist():
                 x1, y1, x2, y2, score, class_id = result
-                if score > 0.3:
+                if score > self.threshold:
                     res_array.append(([int(x1), int(y1), int(x2)-int(x1), int(y2)-int(y1)], float(score), int(class_id)))
 
                 # print(res_array)
@@ -63,11 +59,15 @@ class DeepDetector:
             for bbox, idx, class_id in detected_objects:
                 x1, y1, x2, y2 = map(int, bbox)
                 # bbox = (x1, y1, x2, y2)
-
+                сolor = (0, 255, 0)
                 name = names[int(class_id)]
+
+                if name == "target":
+                    сolor = (0, 0, 255)
+
                 text = f"{idx}:{name}"
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(frame, text, (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), сolor, 2)
+                cv2.putText(frame, text, (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, сolor, 2)
 
             # print(bbox)
             return frame, bbox
@@ -80,10 +80,10 @@ class DeepDetector:
 
             new_x1 = max(0, x1 - (x2 - x1) // 0.5)
             new_y1 = max(0, y1 - (y2 - y1) // 0.5)
-            new_x2 = min(frame.shape[0], x2 + (x2 - x1) // 0.5)
+            new_x2 = min(frame.shape[1], x2 + (x2 - x1) // 0.5)
             new_y2 = min(frame.shape[0], y2 + (y2 - y1) // 0.5)
             # print(new_x1, new_x2, new_y1, new_y2)
-            cv2.rectangle(frame, (int(new_x1), int(new_y1)), (int(new_x2), int(new_y2)), (0, 0, 255), 2)
+            # cv2.rectangle(frame, (int(new_x1), int(new_y1)), (int(new_x2), int(new_y2)), (0, 0, 255), 2)
             upd_frame = frame[int(new_y1):int(new_y2), int(new_x1):int(new_x2)]
             return upd_frame
 
@@ -99,9 +99,6 @@ class DeepDetector:
             ret, frame = cap.read()
             if not ret:
                 break
-
-            # model = load_model("/Users/maxkucher/opencv/howitzer_detector/best.pt")
-            # yolo_model = load_model("yolo11l.pt")
 
             results = self.results(self.model, frame)
             yolo_results = self.results(self.yolo_model, frame)
@@ -124,12 +121,12 @@ class DeepDetector:
         cap.release()
         cv2.destroyAllWindows()
 
-path = "/Users/maxkucher/opencv/howitzer_detector/video_4.mp4"
+path = "/Users/maxkucher/opencv/howitzer_detector/video_3.mp4"
 device = "mps" if torch.backends.mps.is_available() else "cpu"
-model_path = "/Users/maxkucher/opencv/howitzer_detector/best.pt"
+model_path = "/Users/maxkucher/opencv/howitzer_detector/deepsort/artillery_detecor.pt"
 yolo_model_path = "yolo11l.pt"
 
-tracker = DeepDetector(path, device, model_path, yolo_model_path)
+tracker = DeepDetector(path, device, 0.4, model_path, yolo_model_path)
 tracker()
 
 
