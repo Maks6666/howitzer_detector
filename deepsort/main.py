@@ -1,10 +1,12 @@
 import cv2
 from panel.widgets.indicators import ptqdm
+
+from analyzer.analyzer_model import model
 from ultralytics import YOLO
 from deep_sort_realtime.deepsort_tracker import DeepSort
 import torch
 import random
-
+import numpy as np
 
 
 class DeepDetector:
@@ -23,6 +25,7 @@ class DeepDetector:
         self.custom_tracker = DeepSort(max_iou_distance=0.8, max_age=60, n_init=5)
 
         self.feature_list = ["person", "car", "bus", "truck", "target"]
+        self.predictions = ["decoy", "unsure", "target"]
 
     def load_model(self, model_path):
         model = YOLO(model_path)
@@ -42,7 +45,7 @@ class DeepDetector:
                 if score > self.threshold:
                     res_array.append(([int(x1), int(y1), int(x2)-int(x1), int(y2)-int(y1)], float(score), int(class_id)))
 
-            print(f"Results: {res_array}")
+            # print(f"Results: {res_array}")
             tracks = tracker.update_tracks(raw_detections=res_array, frame=frame)
             # print(tracks)
             detected_objects = []
@@ -58,12 +61,20 @@ class DeepDetector:
             return None
 
 
-    def count_objects(self, detected_objects, names):
+    def count_objects(self, detected_custom_objects, detected_objects, names):
+        person_amount = 0
+        car_amount = 0
+        bus_amount = 0
+        truck_amount = 0
+
+        # targets = {
+        #     "decoys": [],
+        #     "unsure": [],
+        #     "targets": []
+        # }
 
         targets = {
-            "decoys": [],
-            "unsure": [],
-            "targets": []
+
         }
 
         objects_counter = {
@@ -75,10 +86,17 @@ class DeepDetector:
 
         if detected_objects is not None and len(detected_objects) > 0:
             # print(detected_objects)
+            # print(detected_objects)
             for _, idx, class_id in detected_objects:
-                name = ""
-                if class_id in names.keys():
-                    name = names[int(class_id)]
+                # person_amount = 0
+                # car_amount = 0
+                # bus_amount = 0
+                # truck_amount = 0
+                # name = ""
+
+                # if class_id in names.keys():
+                name = names[int(class_id)]
+                # print(name)
 
                 if name == "person":
                     objects_counter["person"].append(idx)
@@ -94,21 +112,30 @@ class DeepDetector:
 
                 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-                if name == "target":
-                    person_amount = len(objects_counter["person"])
-                    # array = np.array([person_amount, ...])
-                    # res = model.predict(array)
-                    res = random.randint(0, 3)
+                if len(objects_counter["person"]) > 0:
+                    person_amount = 1
+                    # print("True")
+                    # print(person_amount)
 
-                    if res == 0:
-                        targets["decoys"].append(idx)
+                if len(objects_counter["car"]) > 0:
+                    car_amount = 1
 
-                    if res == 1:
-                        targets["unsure"].append(idx)
+                if len(objects_counter["truck"]) > 0:
+                    truck_amount = 1
 
-                    if res == 2:
-                        targets["targets"].append(idx)
+                if len(objects_counter["bus"]) > 0:
+                    bus_amount = 1
 
+                # print([person_amount, car_amount, bus_amount, truck_amount])
+                array = np.array([person_amount, car_amount, bus_amount, truck_amount])
+                array = array.reshape(1, -1)
+                res = model.predict(array)
+                pred = self.predictions[int(res)]
+                    # print(res)
+                    # res = random.randint(0, 3)
+
+                for _, custom_idx, _ in detected_custom_objects:
+                    targets[custom_idx] = pred
 
             return objects_counter, targets
 
@@ -116,30 +143,35 @@ class DeepDetector:
             return objects_counter, targets
 
 
-    def draw(self, detected_objects, frame, names, targets):
+    def draw(self, detected_objects, frame, names):
         bboxes = []
         if detected_objects is not None and len(detected_objects) > 0:
 
             for bbox, idx, class_id in detected_objects:
-                text = ""
 
                 # bboxes.append(bbox)
                 x1, y1, x2, y2 = map(int, bbox)
                 # bbox = (x1, y1, x2, y2)
                 сolor = (0, 255, 0)
+                # status = "Unknown"
 
                 if class_id in names.keys():
                     name = names[int(class_id)]
                     if name in self.feature_list:
                         if name == "target":
                             сolor = (0, 0, 255)
-                            for key, value in targets.items():
-                                if idx in targets[key]:
-                                    status = key
-                                    text = f"{idx}:{name}:{status}"
+                            text = ""
+                            # if targets is not None:
+                            #     for key, value in targets.items():
+                            #         if idx in targets[key]:
+                            #             print(True)
+                            #             self.basic_status = "known"
+                            #             status = key
+
+                            # text = f"{idx}:{name}"
                         bboxes.append(bbox)
                         cv2.rectangle(frame, (x1, y1), (x2, y2), сolor, 2)
-                        cv2.putText(frame, text, (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, сolor, 2)
+
                     # else:
                     #     text = f"{name}"
 
@@ -151,6 +183,23 @@ class DeepDetector:
             return frame, bboxes
         else:
             return frame, None
+
+    def assign_status(self, frame, detected_targets, targets):
+        for bbox, idx, class_id in detected_targets:
+            x1, y1, x2, y2 = map(int, bbox)
+            status = "Unkown"
+
+            text = f"{idx}:object:{status}"
+            for key, value in targets.items():
+                if key == idx:
+                    status = value
+                    text = f"{idx}:object:{status}"
+
+
+            cv2.putText(frame, text, (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+        return frame
+
 
     def detect_objects(self, frame, bboxes):
         if bboxes is not None and len(bboxes) > 0:
@@ -194,9 +243,9 @@ class DeepDetector:
             results = self.results(self.model, frame)
 
             detected_objects = self.get_results(results, self.custom_tracker, frame)
-            counter, targets = self.count_objects(detected_objects, self.names)
+            # counter, targets = self.count_objects(detected_objects, self.names)
 
-            frame, bboxes = self.draw(detected_objects, frame, self.names, targets)
+            _, bboxes = self.draw(detected_objects, frame, self.names)
 
             if bboxes is not None:
                 upd_frame = self.detect_objects(frame, bboxes)
@@ -207,10 +256,15 @@ class DeepDetector:
 
 
                     detected_yolo_objects = self.get_results(yolo_results, self.custom_tracker, upd_frame)
-                    counter, targets = self.count_objects(detected_yolo_objects, self.yolo_names)
+                    # print(detected_yolo_objects)
+                    counter, targets = self.count_objects(detected_objects, detected_yolo_objects, self.yolo_names)
 
-                    frame, _ = self.draw(detected_yolo_objects, frame, self.yolo_names, targets)
+                    print(targets)
+                    frame, _ = self.draw(detected_yolo_objects, frame, self.yolo_names)
+                    # когда из кадра прорадают солдаты, машины и тд, эта ф-ция тоже перестает работать, перестроить
+                    frame = self.assign_status(frame, detected_objects, targets)
 
+            # print(counter)
             self.display_objects(counter, frame)
             cv2.imshow('YOLO Tracker', frame)
 
@@ -220,7 +274,7 @@ class DeepDetector:
         cap.release()
         cv2.destroyAllWindows()
 
-path = "/Users/maxkucher/opencv/howitzer_detector/video_6.mp4"
+path = "/Users/maxkucher/opencv/howitzer_detector/videos/video_6.mp4"
 device = "mps" if torch.backends.mps.is_available() else "cpu"
 # device = "cpu"
 model_path = "/Users/maxkucher/opencv/howitzer_detector/deepsort/artillery_detecor.pt"
