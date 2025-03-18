@@ -62,20 +62,8 @@ class DeepDetector:
 
 
     def count_objects(self, detected_custom_objects, detected_objects, names):
-        person_amount = 0
-        car_amount = 0
-        bus_amount = 0
-        truck_amount = 0
 
-        # targets = {
-        #     "decoys": [],
-        #     "unsure": [],
-        #     "targets": []
-        # }
-
-        targets = {
-
-        }
+        targets = {}
 
         objects_counter = {
             "person": [],
@@ -85,18 +73,8 @@ class DeepDetector:
         }
 
         if detected_objects is not None and len(detected_objects) > 0:
-            # print(detected_objects)
-            # print(detected_objects)
             for _, idx, class_id in detected_objects:
-                # person_amount = 0
-                # car_amount = 0
-                # bus_amount = 0
-                # truck_amount = 0
-                # name = ""
-
-                # if class_id in names.keys():
                 name = names[int(class_id)]
-                # print(name)
 
                 if name == "person":
                     objects_counter["person"].append(idx)
@@ -112,30 +90,22 @@ class DeepDetector:
 
                 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-                if len(objects_counter["person"]) > 0:
-                    person_amount = 1
-                    # print("True")
-                    # print(person_amount)
+            person_amount = 1 if len(objects_counter["person"]) > 0 else 0
+            car_amount = 1 if len(objects_counter["car"]) > 0 else 0
+            truck_amount = 1 if len(objects_counter["truck"]) > 0 else 0
+            bus_amount = 1 if len(objects_counter["bus"]) > 0 else 0
 
-                if len(objects_counter["car"]) > 0:
-                    car_amount = 1
-
-                if len(objects_counter["truck"]) > 0:
-                    truck_amount = 1
-
-                if len(objects_counter["bus"]) > 0:
-                    bus_amount = 1
 
                 # print([person_amount, car_amount, bus_amount, truck_amount])
-                array = np.array([person_amount, car_amount, bus_amount, truck_amount])
-                array = array.reshape(1, -1)
-                res = model.predict(array)
-                pred = self.predictions[int(res)]
+            array = np.array([person_amount, car_amount, bus_amount, truck_amount])
+            array = array.reshape(1, -1)
+            res = model.predict(array)
+            pred = self.predictions[int(res)]
                     # print(res)
                     # res = random.randint(0, 3)
 
-                for _, custom_idx, _ in detected_custom_objects:
-                    targets[custom_idx] = pred
+            for _, custom_idx, _ in detected_custom_objects:
+                targets[custom_idx] = pred
 
             return objects_counter, targets
 
@@ -169,7 +139,7 @@ class DeepDetector:
                             #             status = key
 
                             # text = f"{idx}:{name}"
-                        bboxes.append(bbox)
+                            bboxes.append(bbox)
                         cv2.rectangle(frame, (x1, y1), (x2, y2), сolor, 2)
 
                     # else:
@@ -185,20 +155,23 @@ class DeepDetector:
             return frame, None
 
     def assign_status(self, frame, detected_targets, targets):
-        for bbox, idx, class_id in detected_targets:
-            x1, y1, x2, y2 = map(int, bbox)
-            status = "Unkown"
+        if detected_targets is not None and len(detected_targets) > 0:
+            for bbox, idx, class_id in detected_targets:
+                x1, y1, x2, y2 = map(int, bbox)
+                status = "Unkown"
 
-            text = f"{idx}:object:{status}"
-            for key, value in targets.items():
-                if key == idx:
-                    status = value
-                    text = f"{idx}:object:{status}"
+                text = f"{idx}:object:{status}"
+                for key, value in targets.items():
+                    if key == idx:
+                        status = value
+                        text = f"{idx}:object:{status}"
 
 
-            cv2.putText(frame, text, (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                cv2.putText(frame, text, (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-        return frame
+            return frame
+        else:
+            return frame
 
 
     def detect_objects(self, frame, bboxes):
@@ -247,22 +220,21 @@ class DeepDetector:
 
             _, bboxes = self.draw(detected_objects, frame, self.names)
 
+            detected_yolo_objects = None
+
             if bboxes is not None:
                 upd_frame = self.detect_objects(frame, bboxes)
 
                 if upd_frame is not None and upd_frame.size > 0:
-
                     yolo_results = self.results(self.yolo_model, upd_frame)
-
-
                     detected_yolo_objects = self.get_results(yolo_results, self.custom_tracker, upd_frame)
-                    # print(detected_yolo_objects)
-                    counter, targets = self.count_objects(detected_objects, detected_yolo_objects, self.yolo_names)
 
-                    print(targets)
-                    frame, _ = self.draw(detected_yolo_objects, frame, self.yolo_names)
+            counter, targets = self.count_objects(detected_objects, detected_yolo_objects, self.yolo_names)
+
+            print(targets)
+            frame, _ = self.draw(detected_yolo_objects, frame, self.yolo_names)
                     # когда из кадра прорадают солдаты, машины и тд, эта ф-ция тоже перестает работать, перестроить
-                    frame = self.assign_status(frame, detected_objects, targets)
+            frame = self.assign_status(frame, detected_objects, targets)
 
             # print(counter)
             self.display_objects(counter, frame)
