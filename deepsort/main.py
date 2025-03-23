@@ -161,7 +161,7 @@ class DeepDetector:
             res = model.predict(array)
             pred = self.predictions[int(res)]
 
-            if detected_custom_objects is not None and len(detected_custom_objects) == 0:
+            if detected_custom_objects is not None:
                 for _, custom_idx, _ in detected_custom_objects:
                     targets[custom_idx] = pred
 
