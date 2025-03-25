@@ -143,7 +143,7 @@ class Tracker:
 
         return frame
 
-    def count_objects(self, frame, yolo_detections, custom_detections):
+    def make_prediction(self, frame, yolo_detections, custom_detections):
 
         targets = {}
 
@@ -225,14 +225,16 @@ class Tracker:
 
 
     def assign_status(self, frame, targets, detections):
-        status = ""
+        idc = []
+        status = "Processing..."
+        priority_idx = None
         color = (0, 0, 0)
+
         if detections is not None:
             for detection in detections:
                 bbox, idx, class_id = detection
+                idc.append(int(idx))
                 x1, y1, x2, y2 = map(int, bbox)
-
-
 
                 for key, value in targets.items():
                     if key == idx:
@@ -244,12 +246,63 @@ class Tracker:
                         elif status == "hofitzer":
                             color = (0, 0, 255)
 
+                priority_idx = min(idc)
                 text = f"{idx}:object:{status}"
 
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(frame, text, (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
 
 
+            return priority_idx
+
+
+    def count_objects(self, frame, objects, targets, priority_idx):
+        decoys = []
+        unsures = []
+        fire_targets = []
+
+        for key, value in targets.items():
+            if value == "decoy":
+                decoys.append(key)
+            if value == "unsure":
+                unsures.append(key)
+            if value == "hofitzer":
+                fire_targets.append(key)
+
+        decoy_amount = len(decoys)
+        unsure_amount = len(unsures)
+        fire_amount = len(fire_targets)
+
+        print(f"Targets: {targets}")
+
+        personal_amount = len(objects["personal"])
+        cars_amount = len(objects["cars"])
+        bus_amount = len(objects["busses"])
+        trucks_amount = len(objects["trucks"])
+
+        cv2.rectangle(frame, (0, 0), (int(frame.shape[1] * 0.32), int(frame.shape[0] * 0.37)), (0, 0, 0), cv2.FILLED)
+
+        cv2.putText(frame, f"Personal: {str(personal_amount)}", (int(frame.shape[1] * 0.02), int(frame.shape[0] * 0.08)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(frame, f"Cars: {str(cars_amount)}", (int(frame.shape[1] * 0.02), int(frame.shape[0] * 0.16)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(frame, f"Busses: {str(bus_amount)}", (int(frame.shape[1] * 0.02), int(frame.shape[0] * 0.24)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(frame, f"Trucks: {str(trucks_amount)}", (int(frame.shape[1] * 0.02), int(frame.shape[0] * 0.32)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+        cv2.rectangle(frame, (0, frame.shape[0]),
+                      (int(frame.shape[1] * 0.32), int(frame.shape[0] - frame.shape[0] * 0.37)), (0, 0, 0), cv2.FILLED)
+
+        # cv2.putText(frame, f"Pr: {priority_idx}", (int(frame.shape[1] * 0.02), int(frame.shape[0] * 0.65)),
+        #             cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+        cv2.putText(frame, f"Decoys: {str(decoy_amount)}", (int(frame.shape[1] * 0.02), int(frame.shape[0] * 0.72)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(frame, f"Unsure: {str(unsure_amount)}", (int(frame.shape[1] * 0.02), int(frame.shape[0] * 0.82)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(frame, f"Targets: {str(fire_amount)}", (int(frame.shape[1] * 0.02), int(frame.shape[0] * 0.92)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
 
     def __call__(self):
@@ -278,9 +331,12 @@ class Tracker:
                 detected_yolo_objects = self.detect(self.yolo_tracker, yolo_detections)
 
 
-            objects, targets = self.count_objects(frame, detected_yolo_objects, detected_objects)
+            objects, targets = self.make_prediction(frame, detected_yolo_objects, detected_objects)
             _ = self.draw(upd_frame, detected_yolo_objects)
-            self.assign_status(frame, targets, detected_objects)
+
+
+            priority_idx = self.assign_status(frame, targets, detected_objects)
+            self.count_objects(frame, objects, targets, priority_idx)
             # print(objects, targets)
 
 
